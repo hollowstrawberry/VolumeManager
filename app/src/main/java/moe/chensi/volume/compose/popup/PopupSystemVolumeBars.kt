@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.RingVolume
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.unit.dp
+import moe.chensi.volume.VirtualVolumeLevel
 import moe.chensi.volume.compose.SystemSliderIds
 
 /**
@@ -21,12 +22,17 @@ import moe.chensi.volume.compose.SystemSliderIds
  * The Call bar's visibility is driven entirely by [hasActiveCall], which [Manager] computes from
  * both native telephony call state and any app's VoIP call audio (see
  * [Manager.updateHasActiveCall]) — this is the single source of truth, so there's no
- * mode-tracking duplicated here.
+ * mode-tracking duplicated here. Calls (of either kind) always use the real, native-step
+ * [PopupStreamVolumeBar], so they behave exactly as they would without this app installed.
+ *
+ * Media is bound to [mediaVolume] — the fine-grained "fake step" virtual master volume — instead
+ * of the real OS stream, via [PopupVirtualVolumeBar].
  */
 fun LazyListScope.popupSystemVolumeBars(
     audioManager: AudioManager,
     isSliderVisible: (String) -> Boolean,
     hasActiveCall: Boolean,
+    mediaVolume: VirtualVolumeLevel,
     onChange: (() -> Unit)? = null
 ) {
     if (hasActiveCall && isSliderVisible(SystemSliderIds.Call)) {
@@ -43,11 +49,10 @@ fun LazyListScope.popupSystemVolumeBars(
 
     if (isSliderVisible(SystemSliderIds.Media)) {
         item(SystemSliderIds.Media) {
-            PopupStreamVolumeBar(
-                streamType = AudioManager.STREAM_MUSIC,
+            PopupVirtualVolumeBar(
+                level = mediaVolume,
                 icon = Icons.Default.VolumeUp,
                 contentDescription = "Media volume",
-                audioManager = audioManager,
                 onChange = onChange
             )
         }

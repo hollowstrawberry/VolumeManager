@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import moe.chensi.volume.VirtualVolumeConfig
 
 class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
     companion object {
@@ -23,7 +24,12 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
     private data class SerializedState(
         val values: MutableList<AppPreferences>,
         val indices: MutableMap<String, Int>,
-        val systemSliderVisibility: MutableMap<String, Boolean> = mutableMapOf()
+        val systemSliderVisibility: MutableMap<String, Boolean> = mutableMapOf(),
+        // Persisted level of the fine-grained "fake step" media master volume (see
+        // moe.chensi.volume.VirtualVolumeLevel). Default to the top level (unity gain / no
+        // attenuation) so a fresh install behaves like the OS's own volume, which also starts
+        // near/at max.
+        val mediaVirtualLevel: Int = VirtualVolumeConfig.MEDIA_MAX_LEVEL
     )
 
     private val lock = Any()
@@ -63,6 +69,23 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
                 }
 
                 state = state.copy(systemSliderVisibility = value.toMutableMap())
+                true
+            }
+
+            if (changed) {
+                save()
+            }
+        }
+
+    var mediaVirtualLevel: Int
+        get() = synchronized(lock) { state.mediaVirtualLevel }
+        set(value) {
+            val changed = synchronized(lock) {
+                if (state.mediaVirtualLevel == value) {
+                    return@synchronized false
+                }
+
+                state = state.copy(mediaVirtualLevel = value)
                 true
             }
 

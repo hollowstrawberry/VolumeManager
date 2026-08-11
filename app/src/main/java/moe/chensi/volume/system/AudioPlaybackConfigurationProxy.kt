@@ -1,15 +1,38 @@
 package moe.chensi.volume.system
 
+import android.media.AudioAttributes
 import android.media.AudioPlaybackConfiguration
 import android.os.DeadObjectException
 import org.joor.Reflect
 import org.joor.ReflectException
 import java.lang.reflect.InvocationTargetException
 
-class AudioPlaybackConfigurationProxy(raw: AudioPlaybackConfiguration) {
+class AudioPlaybackConfigurationProxy(private val raw: AudioPlaybackConfiguration) {
     enum class PlayerState(val value: Int) {
         Unknown(-1), Released(0), Idle(1), Started(2), Paused(3), Stopped(4);
     }
+
+    /**
+     * Which virtual master volume (if any) this player's gain should be composed with. Derived
+     * from the public [AudioAttributes.getUsage] rather than the OS stream type, since that's all
+     * that's actually available per-player.
+     *
+     * Only `Media` gets a master gain (see [moe.chensi.volume.Manager.mediaVolume]). Everything
+     * else, including `USAGE_VOICE_COMMUNICATION` (VoIP call audio, e.g. Discord/WhatsApp/Meet)
+     * and genuine cellular/VoLTE calls (which never show up here at all — that audio is routed
+     * straight from the modem through the HAL), falls into `Other` and gets no master gain, so
+     * calls behave exactly as they did before this app existed. The per-app 0-100 slider still
+     * works for VoIP call audio regardless of category — see [moe.chensi.volume.data.App].
+     */
+    enum class Category {
+        Media, Other
+    }
+
+    val category: Category
+        get() = when (raw.audioAttributes.usage) {
+            AudioAttributes.USAGE_MEDIA, AudioAttributes.USAGE_GAME, AudioAttributes.USAGE_UNKNOWN -> Category.Media
+            else -> Category.Other
+        }
 
     fun Int.toPlayerState(): PlayerState {
         for (state in PlayerState.entries) {

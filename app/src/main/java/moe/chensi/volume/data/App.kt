@@ -15,6 +15,7 @@ import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import moe.chensi.volume.VirtualVolumeCurve
 import moe.chensi.volume.system.AudioPlaybackConfigurationProxy
 import moe.chensi.volume.system.PackageManagerProxy
 import java.util.Locale
@@ -24,7 +25,13 @@ data class App(
     val packageInfo: PackageInfo,
     val name: String,
     private var preferences: AppPreferences,
-    private val savePreferences: () -> Unit
+    private val savePreferences: () -> Unit,
+    // Supplies the current virtual master gain (see moe.chensi.volume.Manager.mediaVolume) for a
+    // given player's category, so it can be composed with this app's own 0-100 volume before
+    // being pushed to the player. Only the Media category actually gets a non-unity value — see
+    // AudioPlaybackConfigurationProxy.Category. Defaults to unity so existing call sites (e.g.
+    // tests) that don't care about the master volume feature keep working unchanged.
+    private val masterGain: (AudioPlaybackConfigurationProxy.Category) -> Float = { 1f }
 ) {
     companion object {
         val collator: Collator by lazy {
@@ -147,8 +154,9 @@ data class App(
             "add player $packageName ${config.clientPid} ${config.playerTypeName} ${config.playerStateName}"
         )
 
-        // Apply volume to potentially new player
-        if (!config.setVolume(_volume)) {
+        // Apply volume to potentially new player, composed with the current virtual master gain
+        // for its category (e.g. the fine media master volume — see VirtualVolumeLevel)
+        if (!config.setVolume(effectiveGain(config.category))) {
             // Player is dead, don't add it
             return
         }
@@ -160,15 +168,34 @@ data class App(
         }
     }
 
+    // Runs the 0-100 slider's raw linear position through the same perceptual (roughly
+    // constant-dB-per-step) curve used by the fine media master volume, instead of treating it as
+    // a raw amplitude multiplier directly. Otherwise the slider's higher steps all sound nearly
+    // identical while its lower steps sound wildly different from each other, since equal changes
+    // in linear amplitude are very much *not* equal changes in perceived loudness.
+    private fun effectiveGain(category: AudioPlaybackConfigurationProxy.Category, position: Float = _volume): Float {
+        return VirtualVolumeCurve.fractionToGain(position) * masterGain(category)
+    }
+
     fun applyVolume(value: Float) {
         val deadPlayers = mutableListOf<AudioPlaybackConfigurationProxy>()
         for (player in players) {
-            if (!player.setVolume(value)) {
+            if (!player.setVolume(effectiveGain(player.category, value))) {
                 deadPlayers.add(player)
             }
         }
         // Remove dead players
         _players.removeAll(deadPlayers)
+    }
+
+    /**
+     * Re-pushes this app's current volume to all its players, recomposed with the current
+     * virtual master gain. Called by [moe.chensi.volume.Manager] whenever the master media or
+     * VoIP-call volume changes, since that's not something this app's own `volume` setter would
+     * otherwise know to react to.
+     */
+    fun reapplyMasterGain() {
+        applyVolume(_volume)
     }
 
     private var _isPlayer by mutableStateOf(preferences.isPlayer)

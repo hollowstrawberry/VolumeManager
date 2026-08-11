@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import moe.chensi.volume.VirtualVolumeLevel
 import moe.chensi.volume.data.App
 
 /**
@@ -23,6 +24,7 @@ fun PopupPanel(
     activeApps: List<App>,
     isSystemSliderVisible: (String) -> Boolean,
     hasActiveCall: Boolean,
+    mediaVolume: VirtualVolumeLevel,
     onChange: (() -> Unit)? = null
 ) {
     Surface(
@@ -39,6 +41,7 @@ fun PopupPanel(
                 audioManager = audioManager,
                 isSliderVisible = isSystemSliderVisible,
                 hasActiveCall = hasActiveCall,
+                mediaVolume = mediaVolume,
                 onChange = onChange
             )
 

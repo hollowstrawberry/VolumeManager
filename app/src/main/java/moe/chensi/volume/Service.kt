@@ -95,10 +95,17 @@ class Service : AccessibilityService() {
         }
 
         private fun adjustVolume() {
-            manager.audioManager.adjustSuggestedStreamVolume(
-                repeatAdjustVolumeDirection, AudioManager.USE_DEFAULT_STREAM_TYPE, 0
-            )
-            VolumeChangeObserver.notifyVolumeChanged()
+            // Any active call — genuine cellular/VoLTE or VoIP (Discord, WhatsApp, Meet, etc.) —
+            // keeps using the OS's real, native-step call volume exactly as it would without this
+            // app installed. Only the media stream gets the fine-grained "fake step" treatment.
+            if (manager.hasActiveCall) {
+                manager.audioManager.adjustSuggestedStreamVolume(
+                    repeatAdjustVolumeDirection, AudioManager.USE_DEFAULT_STREAM_TYPE, 0
+                )
+                VolumeChangeObserver.notifyVolumeChanged()
+            } else {
+                manager.mediaVolume.adjust(repeatAdjustVolumeDirection)
+            }
             startIdleTimer()
         }
 
@@ -189,6 +196,7 @@ class Service : AccessibilityService() {
                         activeApps = activeApps,
                         isSystemSliderVisible = manager::isSystemSliderVisible,
                         hasActiveCall = manager.hasActiveCall,
+                        mediaVolume = manager.mediaVolume,
                         onChange = this@Service.handler::startIdleTimer
                     )
                 }

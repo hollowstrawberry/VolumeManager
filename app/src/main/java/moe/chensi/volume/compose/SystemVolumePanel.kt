@@ -36,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import moe.chensi.volume.R
+import moe.chensi.volume.VirtualVolumeLevel
 import moe.chensi.volume.system.NotificationManagerProxy
 
 object SystemSliderIds {
@@ -44,6 +45,12 @@ object SystemSliderIds {
     const val Call = "call"
     const val Alarm = "alarm"
     const val Notification = "notification"
+
+    // The fine-grained "fake step" virtual media master volume (see
+    // moe.chensi.volume.VirtualVolumeLevel). A distinct id so its visibility is toggled
+    // independently from the real Media slider above, reusing the same systemSliderVisibility
+    // storage.
+    const val MediaFine = "media_fine"
 }
 
 private fun isCallMode(mode: Int): Boolean {
@@ -55,6 +62,7 @@ private fun isCallMode(mode: Int): Boolean {
 fun SystemVolumePanel(
     audioManager: AudioManager,
     notificationManagerProxy: NotificationManagerProxy,
+    mediaVolume: VirtualVolumeLevel,
     showCallVolumeAlways: Boolean,
     applyVisibilityFilter: Boolean,
     allowVisibilityConfig: Boolean,
@@ -115,6 +123,24 @@ fun SystemVolumePanel(
                         sliderName = stringResource(R.string.stream_media),
                         allowVisibilityConfig = allowVisibilityConfig,
                         isVisible = isSliderVisible(SystemSliderIds.Media),
+                        onSliderVisibilityChange = onSliderVisibilityChange
+                    )
+                },
+                onChange = onChange
+            )
+        }
+
+        if (!applyVisibilityFilter || isSliderVisible(SystemSliderIds.MediaFine)) {
+            VirtualStreamVolumeSlider(
+                level = mediaVolume,
+                icon = Icons.Default.VolumeUp,
+                name = stringResource(R.string.stream_media_fine),
+                footer = {
+                    SliderVisibilityFooter(
+                        sliderId = SystemSliderIds.MediaFine,
+                        sliderName = stringResource(R.string.stream_media_fine),
+                        allowVisibilityConfig = allowVisibilityConfig,
+                        isVisible = isSliderVisible(SystemSliderIds.MediaFine),
                         onSliderVisibilityChange = onSliderVisibilityChange
                     )
                 },
