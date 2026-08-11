@@ -4,12 +4,14 @@ import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import moe.chensi.volume.data.App
@@ -22,7 +24,7 @@ import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
 
 @SuppressLint("PrivateApi")
-class Manager(context: Context, dataStore: DataStore<Preferences>) {
+class Manager(val context: Context, dataStore: DataStore<Preferences>) {
     companion object {
         const val SHIZUKU_PACKAGE_NAME = "moe.shizuku.privileged.api"
     }
@@ -34,6 +36,35 @@ class Manager(context: Context, dataStore: DataStore<Preferences>) {
     private var _shizukuStatus by mutableStateOf(ShizukuStatus.Disconnected)
     val shizukuStatus
         get() = _shizukuStatus
+
+    /**
+     * Whether there's currently an active call, from *any* source: a native telephony call
+     * (reflected by [AudioManager.getMode]), or any app's audio session tagged as VoIP/call
+     * audio (`AudioAttributes.USAGE_VOICE_COMMUNICATION`) — which covers Discord and most other
+     * VoIP apps, since those typically don't flip the system-wide audio mode the way the
+     * telephony stack does.
+     */
+    private var _hasActiveCall by mutableStateOf(false)
+    val hasActiveCall: Boolean
+        get() = _hasActiveCall
+
+    private var lastPlaybackConfigurations: List<AudioPlaybackConfiguration> = emptyList()
+
+    private fun isTelephonyCallMode(mode: Int): Boolean {
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
+    }
+
+    private fun updateHasActiveCall() {
+        val hasVoipCallAudio = lastPlaybackConfigurations.any { config ->
+            // isActive() is a hidden/@SystemApi method, so we go through the same reflection
+            // proxy used elsewhere in this class to read the player state; getAudioAttributes()
+            // is public API and safe to call directly.
+            AudioPlaybackConfigurationProxy(config).isPlaying &&
+                config.audioAttributes.usage == AudioAttributes.USAGE_VOICE_COMMUNICATION
+        }
+
+        _hasActiveCall = hasVoipCallAudio || isTelephonyCallMode(audioManager.mode)
+    }
 
     val audioManager = context.getSystemService(AudioManager::class.java)!!.apply {
         Reflect.onClass(AudioManager::class.java).call("getService").get<Any>()
@@ -110,11 +141,20 @@ class Manager(context: Context, dataStore: DataStore<Preferences>) {
                 }
             }, null
         )
+
+        // Playback-config changes don't fire when a native telephony call starts/ends without
+        // any accompanying app audio, so also listen for audio mode changes directly.
+        audioManager.addOnModeChangedListener(ContextCompat.getMainExecutor(context)) {
+            updateHasActiveCall()
+        }
     }
 
     @SuppressLint("DiscouragedPrivateApi")
     @EnableBinderProxy
     fun processAudioPlaybackConfigurations(configs: List<AudioPlaybackConfiguration>) {
+        lastPlaybackConfigurations = configs
+        updateHasActiveCall()
+
         val runningProcesses = activityManager.runningAppProcesses
 
         for (config in configs) {

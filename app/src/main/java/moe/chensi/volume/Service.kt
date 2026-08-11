@@ -24,17 +24,8 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.AbstractComposeView
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.setViewTreeLifecycleOwner
@@ -42,9 +33,9 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import moe.chensi.volume.compose.AppVolumeList
-import moe.chensi.volume.compose.SystemVolumePanel
 import moe.chensi.volume.compose.VolumeChangeObserver
+import moe.chensi.volume.compose.popup.PopupPanel
+import moe.chensi.volume.data.App
 import moe.chensi.volume.system.ActivityTaskManagerProxy
 import moe.chensi.volume.ui.theme.VolumeManagerTheme
 import org.joor.Reflect
@@ -113,9 +104,12 @@ class Service : AccessibilityService() {
 
         fun startRepeatAdjustVolume(direction: Int) {
             repeatAdjustVolumeDirection = direction
-            if (view != null) {
-                adjustVolume()
-            }
+            // Always adjust immediately, even before the popup view exists yet. Previously this
+            // was gated on `view != null`, so on the very first key press (before the popup had
+            // been created) nothing happened until the delayed runnable below fired — and a
+            // quick tap would cancel that runnable via stopRepeatAdjustVolume() before it ran,
+            // silently dropping the volume change entirely.
+            adjustVolume()
             postDelayed(repeatAdjustVolumeRunnable, AUTO_REPEAT_INITIAL_DELAY)
         }
 
@@ -183,35 +177,20 @@ class Service : AccessibilityService() {
 
             @Composable
             override fun Content() {
-                return VolumeManagerTheme {
-                    Surface(
-                        color = Color(1f, 1f, 1f, 0.3f),
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        shape = RoundedCornerShape(40f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp, 16.dp)
-                        ) {
-                            AppVolumeList(
-                                apps = manager.apps.values,
-                                showAll = false,
-                                onChange = this@Service.handler::startIdleTimer
-                            ) {
-                                item("system_volume_panel") {
-                                    SystemVolumePanel(
-                                        audioManager = manager.audioManager,
-                                        notificationManagerProxy = manager.notificationManagerProxy,
-                                        showCallVolumeAlways = false,
-                                        applyVisibilityFilter = true,
-                                        allowVisibilityConfig = false,
-                                        isSliderVisible = manager::isSystemSliderVisible,
-                                        onSliderVisibilityChange = manager::setSystemSliderVisible,
-                                        onChange = this@Service.handler::startIdleTimer
-                                    )
-                                }
-                            }
-                        }
-                    }
+                // The popup always renders in a dark, icon-only, vertical-bar layout,
+                // independent of the device theme used by the main activity.
+                return VolumeManagerTheme(darkTheme = true, dynamicColor = false) {
+                    val activeApps = manager.apps.values
+                        .filter { app -> app.isPlayer && app.isPlaying && !app.hidden }
+                        .sortedWith(App.comparator)
+
+                    PopupPanel(
+                        audioManager = manager.audioManager,
+                        activeApps = activeApps,
+                        isSystemSliderVisible = manager::isSystemSliderVisible,
+                        hasActiveCall = manager.hasActiveCall,
+                        onChange = this@Service.handler::startIdleTimer
+                    )
                 }
             }
         }
@@ -225,7 +204,9 @@ class Service : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT // Make the background translucent
         ).apply {
-            gravity = Gravity.CENTER // Center the view
+            // Anchor the popup to the left edge of the screen, vertically centered.
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            x = 12 // Small left margin, in pixels
         }
     }
 

@@ -62,12 +62,13 @@ fun SystemVolumePanel(
     onSliderVisibilityChange: (String, Boolean) -> Unit,
     onChange: (() -> Unit)? = null
 ) {
+    val showCallVolumeAlwaysTrue = true
     val context = LocalContext.current
     val executor = remember(context) { ContextCompat.getMainExecutor(context) }
     var inCallMode by remember { mutableStateOf(isCallMode(audioManager.mode)) }
 
-    DisposableEffect(audioManager, showCallVolumeAlways) {
-        if (showCallVolumeAlways) {
+    DisposableEffect(audioManager, showCallVolumeAlwaysTrue) {
+        if (showCallVolumeAlwaysTrue) {
             return@DisposableEffect onDispose { }
         }
 
@@ -82,7 +83,7 @@ fun SystemVolumePanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!applyVisibilityFilter || isSliderVisible(SystemSliderIds.Call)) {
-            if (!showCallVolumeAlways && inCallMode || showCallVolumeAlways) {
+            if (!showCallVolumeAlwaysTrue && inCallMode || showCallVolumeAlwaysTrue) {
                 StreamVolumeSlider(
                     streamType = AudioManager.STREAM_VOICE_CALL,
                     icon = Icons.Default.PhoneInTalk,
