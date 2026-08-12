@@ -334,6 +334,8 @@ class MainActivity : ComponentActivity() {
                                                 audioManager = manager.audioManager,
                                                 notificationManagerProxy = manager.notificationManagerProxy,
                                                 mediaVolume = manager.mediaVolume,
+                                                proximitySwitchEnabled = manager.proximitySwitchEnabled,
+                                                onProximitySwitchEnabledChange = manager::setProximitySwitchEnabled,
                                                 showCallVolumeAlways = true,
                                                 applyVisibilityFilter = !showAll,
                                                 allowVisibilityConfig = showAll,

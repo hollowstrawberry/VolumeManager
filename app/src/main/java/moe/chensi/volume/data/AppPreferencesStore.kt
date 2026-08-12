@@ -29,7 +29,12 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
         // moe.chensi.volume.VirtualVolumeLevel). Default to the top level (unity gain / no
         // attenuation) so a fresh install behaves like the OS's own volume, which also starts
         // near/at max.
-        val mediaVirtualLevel: Int = VirtualVolumeConfig.MEDIA_MAX_LEVEL
+        val mediaVirtualLevel: Int = VirtualVolumeConfig.MEDIA_MAX_LEVEL,
+        // Whether the volume keys should switch to controlling the real call volume when the
+        // proximity sensor is covered during a call (see Manager.proximitySwitchEnabled). Off by
+        // default since it changes what the volume keys do based on a sensor, which isn't
+        // something to turn on without the user asking for it.
+        val proximitySwitchEnabled: Boolean = false
     )
 
     private val lock = Any()
@@ -86,6 +91,23 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
                 }
 
                 state = state.copy(mediaVirtualLevel = value)
+                true
+            }
+
+            if (changed) {
+                save()
+            }
+        }
+
+    var proximitySwitchEnabled: Boolean
+        get() = synchronized(lock) { state.proximitySwitchEnabled }
+        set(value) {
+            val changed = synchronized(lock) {
+                if (state.proximitySwitchEnabled == value) {
+                    return@synchronized false
+                }
+
+                state = state.copy(proximitySwitchEnabled = value)
                 true
             }
 

@@ -7,6 +7,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
@@ -71,6 +75,66 @@ class Manager(val context: Context, dataStore: DataStore<Preferences>) {
         }
 
         _hasActiveCall = hasVoipCallAudio || isTelephonyCallMode(audioManager.mode)
+    }
+
+    /**
+     * Whether the volume keys should switch to controlling the real call volume when the
+     * proximity sensor is covered during a call, instead of always controlling the fine media
+     * volume — useful for controlling both media and VoIP call volume during a call on a device
+     * with no extra buttons and non-remappable earbud controls, by holding the phone up to (or
+     * otherwise covering the sensor on) one's ear/face to reach the call volume, and away from it
+     * for media. Off by default (see [AppPreferencesStore]); use [setProximitySwitchEnabled] to
+     * change it, not the backing field directly, so the persisted value and sensor registration
+     * stay in sync.
+     */
+    private var _proximitySwitchEnabled by mutableStateOf(false)
+    val proximitySwitchEnabled: Boolean
+        get() = _proximitySwitchEnabled
+
+    fun setProximitySwitchEnabled(enabled: Boolean) {
+        if (_proximitySwitchEnabled == enabled) {
+            return
+        }
+
+        _proximitySwitchEnabled = enabled
+        appPreferencesStore.proximitySwitchEnabled = enabled
+        updateProximitySensorRegistration()
+    }
+
+    // Whether something is currently covering the proximity sensor. Only meaningful (and only
+    // kept up to date — see updateProximitySensorRegistration) while proximitySwitchEnabled.
+    private var _isProximityNear by mutableStateOf(false)
+    val isProximityNear: Boolean
+        get() = _isProximityNear
+
+    private val sensorManager by lazy { context.getSystemService(SensorManager::class.java) }
+    private val proximitySensor by lazy { sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY) }
+
+    private val proximitySensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            // Proximity sensors typically report a simple near/far reading rather than a truly
+            // continuous distance — comparing against the sensor's own reported maximum range
+            // (rather than a hardcoded distance threshold) is what makes this work consistently
+            // across the different ranges various proximity sensor models report, since "far"
+            // always reads as exactly the maximum and "near" always reads well below it (often
+            // exactly 0).
+            val maxRange = proximitySensor?.maximumRange ?: return
+            _isProximityNear = event.values.isNotEmpty() && event.values[0] < maxRange
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    private fun updateProximitySensorRegistration() {
+        val manager = sensorManager ?: return
+        val sensor = proximitySensor ?: return
+
+        if (_proximitySwitchEnabled) {
+            manager.registerListener(proximitySensorListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        } else {
+            manager.unregisterListener(proximitySensorListener)
+            _isProximityNear = false
+        }
     }
 
     val audioManager = context.getSystemService(AudioManager::class.java)!!.apply {
@@ -393,6 +457,12 @@ class Manager(val context: Context, dataStore: DataStore<Preferences>) {
             // value hasn't actually changed, so this is safe to run on every emission (including
             // the initial default-state one before the real persisted data loads).
             mediaVolume.setLevel(appPreferencesStore.mediaVirtualLevel)
+
+            // Same idea for the proximity switch setting: this goes through setProximitySwitchEnabled
+            // directly (rather than a separate "quiet" path) since it's idempotent — it already
+            // no-ops when the value hasn't changed — and, unlike mediaVolume, has no risk of
+            // writing back to some other system state in a loop.
+            setProximitySwitchEnabled(appPreferencesStore.proximitySwitchEnabled)
 
             if (first) {
                 initialize()

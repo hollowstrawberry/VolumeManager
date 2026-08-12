@@ -9,6 +9,7 @@ import android.media.AudioManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.DoNotDisturbOn
@@ -16,12 +17,15 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.RingVolume
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.SensorsOff
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +67,8 @@ fun SystemVolumePanel(
     audioManager: AudioManager,
     notificationManagerProxy: NotificationManagerProxy,
     mediaVolume: VirtualVolumeLevel,
+    proximitySwitchEnabled: Boolean,
+    onProximitySwitchEnabledChange: (Boolean) -> Unit,
     showCallVolumeAlways: Boolean,
     applyVisibilityFilter: Boolean,
     allowVisibilityConfig: Boolean,
@@ -90,6 +96,29 @@ fun SystemVolumePanel(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (proximitySwitchEnabled) Icons.Default.Sensors else Icons.Default.SensorsOff,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp)
+            )
+            Text(
+                text = stringResource(R.string.proximity_call_switch_label),
+                modifier = Modifier.weight(1f)
+            )
+            ToggleButton(
+                checked = proximitySwitchEnabled,
+                checkedDescription = stringResource(R.string.proximity_call_switch_disable),
+                checkedIcon = Icons.Default.Sensors,
+                uncheckedDescription = stringResource(R.string.proximity_call_switch_enable),
+                uncheckedIcon = Icons.Default.SensorsOff,
+                onCheckedChange = onProximitySwitchEnabledChange
+            )
+        }
+
         if (!applyVisibilityFilter || isSliderVisible(SystemSliderIds.Call)) {
             if (!showCallVolumeAlwaysTrue && inCallMode || showCallVolumeAlwaysTrue) {
                 StreamVolumeSlider(

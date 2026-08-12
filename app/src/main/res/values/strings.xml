@@ -19,6 +19,9 @@
     <string name="stream_alarm">Alarm</string>
     <string name="stream_notification">Notification</string>
     <string name="stream_media_fine">Media (Fine)</string>
+    <string name="proximity_call_switch_label">Cover sensor during calls for call volume</string>
+    <string name="proximity_call_switch_enable">Enable proximity call volume switch</string>
+    <string name="proximity_call_switch_disable">Disable proximity call volume switch</string>
     <string name="show_slider">Show %1$s slider</string>
     <string name="hide_slider">Hide %1$s slider</string>
     <string name="enable_vibrate_mode">Enable vibrate mode</string>

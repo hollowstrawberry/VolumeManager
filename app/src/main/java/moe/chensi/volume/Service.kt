@@ -95,10 +95,18 @@ class Service : AccessibilityService() {
         }
 
         private fun adjustVolume() {
-            // Any active call — genuine cellular/VoLTE or VoIP (Discord, WhatsApp, Meet, etc.) —
-            // keeps using the OS's real, native-step call volume exactly as it would without this
-            // app installed. Only the media stream gets the fine-grained "fake step" treatment.
-            if (manager.hasActiveCall) {
+            // With the proximity-switch setting off (the default), any active call — genuine
+            // cellular/VoLTE or VoIP (Discord, WhatsApp, Meet, etc.) — keeps using the OS's real,
+            // native-step call volume exactly as it would without this app installed, same as
+            // before this setting existed. With it on, that's narrowed to only when the
+            // proximity sensor is also covered (phone held up to an ear, or otherwise
+            // deliberately covered) — letting both media and call volume be reached during a
+            // call without needing extra buttons — and the keys control media the rest of the
+            // time, including during a call.
+            val useCallVolume = manager.hasActiveCall &&
+                (!manager.proximitySwitchEnabled || manager.isProximityNear)
+
+            if (useCallVolume) {
                 manager.audioManager.adjustSuggestedStreamVolume(
                     repeatAdjustVolumeDirection, AudioManager.USE_DEFAULT_STREAM_TYPE, 0
                 )
