@@ -34,7 +34,7 @@ fun PopupPanel(
     ) {
         LazyRow(
             horizontalArrangement = popupBarSpacing,
-            contentPadding = PaddingValues(start = 8.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
+            contentPadding = PaddingValues(16.dp),
             modifier = Modifier.height(380.dp)
         ) {
             popupSystemVolumeBars(

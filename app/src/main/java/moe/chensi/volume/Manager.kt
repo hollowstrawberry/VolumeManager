@@ -103,7 +103,7 @@ class Manager(val context: Context, dataStore: DataStore<Preferences>) {
 
         // Keep the real OS stream roughly in sync so other apps (and the system volume UI, if
         // ever shown) see the change too — but only when this update didn't itself originate
-        // from a real-stream change (see onRealMediaVolumeChanged), or we'd loop.
+        // from a real-stream change (see onVolumeChangedBroadcast), or we'd loop.
         if (!syncingMediaFromRealStream) {
             pushMediaLevelToRealStream(level)
         }
@@ -114,8 +114,17 @@ class Manager(val context: Context, dataStore: DataStore<Preferences>) {
         reapplyMasterGain()
     }
 
-    private var pendingSelfRealVolumeIndex: Int? = null
     private var syncingMediaFromRealStream = false
+
+    // The last real STREAM_MUSIC index we know about, kept up to date by both
+    // pushMediaLevelToRealStream (our own writes) and onVolumeChangedBroadcast (external ones).
+    // ACTION_VOLUME_CHANGED doesn't distinguish which stream changed without relying on hidden
+    // extras, and fires for *every* stream (call, ring, alarm, notification...) — comparing
+    // against this cached value is what lets onVolumeChangedBroadcast tell a genuine media change
+    // apart from some unrelated stream's broadcast, instead of needlessly (and, because the
+    // real<->virtual mapping is lossy in the fine-to-coarse direction, incorrectly) re-deriving
+    // and snapping mediaVolume every single time *any* stream's volume changes anywhere.
+    private var lastKnownRealMediaIndex = -1
 
     private fun pushMediaLevelToRealStream(level: Int) {
         val realMax = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -126,31 +135,28 @@ class Manager(val context: Context, dataStore: DataStore<Preferences>) {
         val targetRealIndex = VirtualVolumeCurve.mapStep(level, mediaVolume.maxLevel, realMax)
         val currentRealIndex = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         if (targetRealIndex == currentRealIndex) {
+            lastKnownRealMediaIndex = currentRealIndex
             return
         }
 
-        pendingSelfRealVolumeIndex = targetRealIndex
+        lastKnownRealMediaIndex = targetRealIndex
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetRealIndex, 0)
     }
 
     /**
-     * Called whenever `ACTION_VOLUME_CHANGED` fires for the media stream, from *any* source —
-     * another app, the system volume UI, a Bluetooth remote, or an echo of our own
-     * [pushMediaLevelToRealStream] call above. Approximately mirrors the real index onto
-     * [mediaVolume] by matching fractions of each scale's max (see [VirtualVolumeCurve.mapStep]),
-     * without pushing back to the real stream in the process (which would create a feedback
-     * loop) — [syncingMediaFromRealStream] guards that.
+     * Called whenever `ACTION_VOLUME_CHANGED` fires, for *any* stream — the broadcast doesn't say
+     * which one without relying on hidden extras, so [lastKnownRealMediaIndex] is what filters
+     * this down to genuine media-stream changes only, ignoring broadcasts caused by some other
+     * stream (a call, ringtone, alarm, etc.) entirely.
      */
-    private fun onRealMediaVolumeChanged() {
+    private fun onVolumeChangedBroadcast() {
         val realIndex = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-
-        if (pendingSelfRealVolumeIndex == realIndex) {
-            // Echo of our own change above; nothing more to do, we already applied its effects
-            // synchronously at the time.
-            pendingSelfRealVolumeIndex = null
+        if (realIndex == lastKnownRealMediaIndex) {
+            // The media stream itself hasn't actually changed — this broadcast was for some
+            // other stream. Nothing to mirror.
             return
         }
-        pendingSelfRealVolumeIndex = null
+        lastKnownRealMediaIndex = realIndex
 
         val realMax = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         if (realMax <= 0) {
@@ -293,10 +299,15 @@ class Manager(val context: Context, dataStore: DataStore<Preferences>) {
         // for the real stream sliders' live UI updates; here it drives the actual gain
         // computation instead, so it needs to keep running for the process's whole lifetime
         // rather than only while a slider happens to be on screen.
+        //
+        // Seed the cache with the real value *before* registering, so the very first broadcast
+        // (for whichever stream) is compared against the true starting point rather than the
+        // sentinel -1, which would otherwise be misread as a genuine media-stream change.
+        lastKnownRealMediaIndex = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         context.registerReceiver(
             object : BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
-                    onRealMediaVolumeChanged()
+                    onVolumeChangedBroadcast()
                 }
             },
             IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
