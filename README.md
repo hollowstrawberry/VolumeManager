@@ -2,7 +2,7 @@
 
 Control each app's volume independently. [Shizuku](https://shizuku.rikka.app/) is used to access privileged APIs. Requires Android 13+.
 
-This is a fork, check the original repo for details.
+This is an AI slop fork, check the original repo for details.
 
 ## Changes in this fork
 
